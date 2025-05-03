@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PokeNotícias.com</title>
+  <link rel="icon" href="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png" />
+  <meta name="theme-color" content="#ef5350" />
+
+  <!-- Manifest embutido -->
+  <script type="application/manifest+json">
+    {
+      "name": "PokeNotícias",
+      "short_name": "PokeNotícias",
+      "start_url": "/index.html",
+      "display": "standalone",
+      "background_color": "#ffffff",
+      "theme_color": "#ef5350",
+      "orientation": "portrait",
+      "icons": [
+        {
+          "src": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        },
+        {
+          "src": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png",
+          "sizes": "512x512",
+          "type": "image/png"
+        }
+      ]
+    }
+  </script>
+  <script>
+    const manifestEl = document.querySelector('script[type="application/manifest+json"]');
+    if (manifestEl) {
+      const blob = new Blob([manifestEl.textContent], {type: 'application/json'});
+      const manifestURL = URL.createObjectURL(blob);
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = manifestURL;
+      document.head.appendChild(link);
+    }
+  </script>
+
+  <style>
+    body { font-family: 'Roboto', sans-serif; margin: 0; padding: 0; background-color: #f2f2f2; }
+    #offlineBanner { background: #ffc107; color: #000; text-align: center; padding: 0.5rem; display: none; font-weight: bold; }
+    #installBtn { display: none; position: fixed; bottom: 10px; right: 10px; padding: 10px 16px; font-weight: bold; background: #ef5350; color: white; border: none; border-radius: 6px; cursor: pointer; z-index: 10000; }
+  </style>
+</head>
+<body>
+  <div id="offlineBanner">Você está offline. Mostrando notícias salvas.</div>
+  <template id="offline-page">
+    <div style="padding: 2rem; text-align: center;">
+      <h1>Você está offline</h1>
+      <p>Esta é uma versão offline do PokeNotícias. Conecte-se à internet para atualizar o conteúdo.</p>
+    </div>
+  </template>
+
+  <!-- Botão de instalação do PWA -->
+  <button id="installBtn">Instalar PokeNotícias</button>
+
+  <!-- Conteúdo principal do site (omitido aqui para foco na integração) -->
+
+  <!-- Service Worker embutido -->
+  <script id="inline-sw" type="javascript/worker">
+    const CACHE_NAME = "pokenoticias-cache-v1";
+    const OFFLINE_URL = "/offline";
+
+    const urlsToCache = ["/", OFFLINE_URL];
+
+    self.addEventListener("install", event => {
+      event.waitUntil((async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const offlineContent = `<!DOCTYPE html><html><head><title>Offline</title></head><body><h1>Você está offline</h1><p>Conecte-se à internet para novas atualizações.</p></body></html>`;
+        await cache.put(OFFLINE_URL, new Response(offlineContent, { headers: { 'Content-Type': 'text/html' } }));
+        for (const url of urlsToCache) {
+          if (url !== OFFLINE_URL) {
+            try { await cache.add(url); } catch (e) { console.warn("Erro ao cachear", url, e); }
+          }
+        }
+      })());
+      self.skipWaiting();
+    });
+
+    self.addEventListener("activate", event => {
+      event.waitUntil(
+        caches.keys().then(keys => Promise.all(
+          keys.map(key => key !== CACHE_NAME ? caches.delete(key) : null)
+        ))
+      );
+      self.clients.claim();
+    });
+
+    self.addEventListener("fetch", event => {
+      if (event.request.mode === "navigate") {
+        event.respondWith(
+          fetch(event.request).catch(() => caches.match(OFFLINE_URL))
+        );
+      } else {
+        event.respondWith(
+          caches.match(event.request).then(res => res || fetch(event.request))
+        );
+      }
+    });
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      const swBlob = new Blob([
+        document.getElementById("inline-sw").textContent
+      ], { type: "application/javascript" });
+      const swURL = URL.createObjectURL(swBlob);
+      navigator.serviceWorker.register(swURL).then(() => {
+        console.log("Service Worker registrado");
+      }).catch(err => {
+        console.warn("Erro ao registrar Service Worker:", err);
+      });
+    }
+
+    window.addEventListener('offline', () => {
+      const tpl = document.getElementById('offline-page');
+      if (tpl) document.body.innerHTML = tpl.innerHTML;
+    });
+    window.addEventListener('online', () => location.reload());
+
+    // Instalação do PWA
+    let deferredPrompt;
+    const installBtn = document.getElementById('installBtn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.style.display = 'block';
+    });
+
+    installBtn.addEventListener('click', () => {
+      installBtn.style.display = 'none';
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+          if (choiceResult.outcome === 'accepted') {
+            console.log('PWA instalado');
+          } else {
+            console.log('PWA não instalado');
+          }
+          deferredPrompt = null;
+        });
+      }
+    });
+  </script>
+</body>
+</html>
